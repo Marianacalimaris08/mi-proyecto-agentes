@@ -1,7 +1,9 @@
 """Aplicación principal: flujo secuencial de agentes."""
 
+import os
 import re
 import unicodedata
+from datetime import datetime
 
 from agentes.disenador_practica import crear_agente_disenador
 from agentes.explicador import crear_agente_explicador
@@ -9,6 +11,13 @@ from agentes.revisor import crear_agente_revisor
 from herramientas.archivos import guardar_markdown
 from herramientas.validacion import validar_guia
 from runtime.ejecutor import ejecutar_agente
+from runtime.errores import (
+    ConfiguracionIncompleta,
+    ErrorDeArchivo,
+    LimiteTemporal,
+    RespuestaVacia,
+    ServicioNoDisponible,
+)
 
 
 def _nombre_archivo(tema):
@@ -28,9 +37,10 @@ def _con_titulo(texto, titulo):
 
 
 def _leer_validacion(resultado):
-    """Devuelve (ok, faltantes) sin importar el formato de validar_guia."""
+    """Devuelve (ok, faltantes) a partir de lo que responde validar_guia."""
     if isinstance(resultado, dict):
-               return bool(resultado.get("valida", resultado.get("ok"))), list(resultado.get("faltantes", []))
+        valida = resultado.get("valida", resultado.get("ok"))
+        return bool(valida), list(resultado.get("faltantes", []))
     if isinstance(resultado, (tuple, list)) and len(resultado) == 2:
         return bool(resultado[0]), list(resultado[1] or [])
     return bool(resultado), []
@@ -75,7 +85,7 @@ def ejecutar_flujo(tema, ejecutar=ejecutar_agente, permitir_correccion=False):
     if not ok:
         return {"ok": False, "faltantes": faltantes}
 
-    # 6. Guardar
+    # 6. Guardar (solo si la guía es válida)
     guardado = guardar_markdown(_nombre_archivo(tema), guia)
     if isinstance(guardado, dict):
         if not guardado.get("ok"):
@@ -92,7 +102,34 @@ def main():
     if not tema:
         print("El tema no puede estar vacío.")
         return 1
-    resultado = ejecutar_flujo(tema)
+    try:
+        resultado = ejecutar_flujo(tema)
+    except ValueError as error:
+        print(error)
+        return 1
+    except ConfiguracionIncompleta:
+        print("Falta configurar la clave o el modelo. Revisa tu archivo .env.")
+        return 1
+    except LimiteTemporal:
+        print("Se alcanzó el límite de uso de la API. Espera un momento y reintenta.")
+        return 1
+    except ServicioNoDisponible:
+        modelo = os.getenv("GEMINI_MODEL", "(sin definir)")
+        hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(
+            "El servicio no está disponible (503). Espera un momento y "
+            "reintenta una sola vez."
+        )
+        print(f"Si persiste, anota: modelo={modelo}, hora={hora}.")
+        print("Consulta también el estado del servicio de Gemini.")
+        return 1
+    except RespuestaVacia:
+        print("El agente no devolvió texto. Intenta de nuevo con otro tema.")
+        return 1
+    except ErrorDeArchivo:
+        print("No se pudo guardar el archivo. No se guardó contenido parcial.")
+        return 1
+
     if resultado["ok"]:
         print(f"Guía guardada en: {resultado['ruta']}")
         return 0

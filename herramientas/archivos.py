@@ -1,6 +1,7 @@
 """Guardado seguro de archivos Markdown."""
 
 import os
+from runtime.errores import ErrorDeArchivo
 import tempfile
 from pathlib import Path
 
@@ -37,6 +38,6 @@ def guardar_markdown(nombre_archivo, contenido):
     except (OSError, UnicodeError) as error:
         if temporal and os.path.exists(temporal):
             os.remove(temporal)
-        return {"ok": False, "error": f"No se pudo guardar el archivo: {error}"}
+        raise ErrorDeArchivo("No se pudo guardar el archivo.") from None
 
     return {"ok": True, "ruta": f"{CARPETA_SALIDA}/{nombre_archivo}"}
