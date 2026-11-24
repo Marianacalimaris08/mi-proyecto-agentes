@@ -115,3 +115,61 @@ docker run --rm -it --user "$(id -u):$(id -g)" --env-file .env -e MODO_SIMULADO=
 - Utiliza datos ficticios y limita el contexto enviado a la información necesaria.
 - Mantén la clave en `.env`, excluida de Git, documentación, capturas y mensajes.
 - Si una clave se expone, revócala y reemplázala.
+
+## Descripción
+
+Aplicación en Python que genera guías de estudio sobre un tema de Python mediante un flujo secuencial de agentes con Google ADK y Gemini. Se ejecuta en Docker.
+
+## Agentes y herramientas
+
+- `explicador` (`agentes/explicador.py`): explica el tema con un ejemplo de código.
+- `disenador_practica` (`agentes/disenador_practica.py`): propone un ejercicio con criterios de evaluación.
+- `revisor` (`agentes/revisor.py`): une todo y entrega la guía final con la sección `## Revisión`.
+- `guardar_markdown` (`herramientas/archivos.py`): guarda la guía en `salida/` de forma segura. Si falla, lanza `ErrorDeArchivo` y no deja contenido parcial.
+- `validar_guia` (`herramientas/validacion.py`): comprueba título, secciones, bloque de código y que no haya datos sensibles.
+
+## Configuración
+
+El archivo `.env` (ignorado por Git) define la clave de Gemini y `GEMINI_MODEL=gemini-3.5-flash-lite`. Nunca se debe compartir ni subir la clave.
+
+## Ejecución con Gemini
+
+```bash
+export AGENTS_IMAGE="ghcr.io/hbtn-edu/ai-agents-python:0.4.0"
+docker run --rm -it --user "$(id -u):$(id -g)" --env-file .env \
+  -v "$PWD:/workspace" -w /workspace "$AGENTS_IMAGE" python main.py
+```
+
+Pruebas:
+
+```bash
+docker run --rm -it --user "$(id -u):$(id -g)" -v "$PWD:/workspace" -w /workspace "$AGENTS_IMAGE" \
+  python -m pytest -q pruebas/test_flujo.py -k 'not extension'
+```
+
+## Ejemplo de ejecución
+
+```text
+Tema de Python: listas
+Guía guardada en: salida/guia_listas.md
+```
+
+Guías de ejemplo generadas con Gemini y validadas con `validar_guia`:
+
+- [ejemplos/guia_listas.md](ejemplos/guia_listas.md)
+- [ejemplos/guia_funciones.md](ejemplos/guia_funciones.md)
+
+## Limitaciones
+
+- Depende de la disponibilidad y las cuotas de Gemini (errores 429 y 503).
+- La calidad del contenido puede variar entre ejecuciones.
+- La validación comprueba la estructura, no que el contenido sea correcto.
+- Solo hace una corrección automática cuando se activa `permitir_correccion`.
+
+## Reflexión
+
+1. **¿Qué diferencia hay entre una llamada directa a un modelo y un agente?** La llamada directa envía un texto y recibe una respuesta. Un agente tiene instrucciones propias, un rol y puede usar herramientas, y un ejecutor gestiona la sesión y los errores.
+2. **¿Qué responsabilidad tiene cada agente y cada herramienta?** Cada agente hace una sola tarea: explicar, diseñar la práctica o revisar. Las herramientas hacen lo mecánico: guardar el archivo y validar la estructura.
+3. **¿Qué parte es determinista y cuál puede variar?** Es determinista el orden del flujo, la validación, el nombre del archivo y el guardado. Varía el texto que genera el modelo.
+4. **¿Por qué se valida con Python además de usar un revisor?** El revisor es un modelo y puede equivocarse o ignorar el formato. Python comprueba siempre las mismas reglas antes de guardar, sin depender del azar.
+5. **¿Qué cambiaría al utilizar otro proveedor o un modelo local?** Habría que cambiar la configuración, la clave y el ejecutor. Los errores, la cuota y la calidad también serían distintos, pero el flujo, las herramientas y la validación seguirían igual.
